@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block content %}
+    {% for exam in exams %}
+    <article class="media content-section">
+        <div class="media-body">
+            <h2>{{ exam.topic }} Exam</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>On</th>
+                        <th>Duration</th>
+                        <th>Marks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th>{{ exam.start_time.strftime('%Y-%m-%d') }}</th>
+                        <th>{{ exam.duration }} minutes</th>
+                        <th>{{ exam.marks }}</th>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </article>
+    {% endfor %}
+{% endblock %}

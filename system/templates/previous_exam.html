@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+{% for exam in exams %}
+    <article class="media content-section">
+        <img class="rounded-circle article-img" src="{{ url_for('static', filename='profile_pics/' + exam.author.image_file) }}">
+        <div class="media-body">
+            <div class="article-metadata">
+                <small class="text-muted">Created By - {{ exam.author.username }}</small>
+            </div>
+            <h2>{{ exam.topic }} Exam</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>On</th>
+                        <th>Duration</th>
+                        <th>Negative %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th>{{ exam.start_time.strftime('%Y-%m-%d') }}</th>
+                        <th>{{ exam.duration }} minutes</th>
+                        <th>{{ exam.negative }}%</th>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </article>
+    {% endfor %}
+{% endblock %}

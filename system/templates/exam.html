@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block content %}
+    <div class="content-section">
+        <form method="POST" action="">
+            {% for question in test %}
+                <h2>{{ question[0] }}</h2>
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <th>
+                                <input type="radio" name="{{ question[6] }}" value="A"> 
+                                <label for="1">{{ question[1] }}</label>
+                            </th>
+                            <th>
+                                <input type="radio" name="{{ question[6] }}" value="B"> 
+                                <label for="2">{{ question[2] }}</label>
+                            </th>
+                        </tr>
+                        <tr>
+                            <th>
+                                <input type="radio" name="{{ question[6] }}" value="C"> 
+                                <label for="3">{{ question[3] }}</label>
+                            </th>
+                            <th>
+                                <input type="radio" name="{{ question[6] }}" value="D"> 
+                                <label for="4">{{ question[4] }}</label>
+                            </th>
+                        </tr>
+                    </tbody>
+                </table>
+            {% endfor %}
+            <div class="form-group">
+                {{ form.submit(class="btn btn-outline-info") }}
+            </div>
+        </form>
+    </div>
+{% endblock %}
+
+{% block script %}
+<script>
+
+    function changeURL() {
+        document.location.href = 'localhost:5000';
+    }
+    setTimeout(10000, changeURL);
+
+</script>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block content %}
+    {% if current_user.user_access %}
+        <div class="content-section text-center">
+            <a class="btn btn-outline-success mr-4" href="{{ url_for('create_exam') }}">Create Exam</a>
+            <a class="btn btn-outline-warning" href="{{ url_for('previous_exam') }}">Previous Exams</a>
+        </div>
+    {% else %}
+        <div class="content-section text-center">
+            <a class="btn btn-outline-success mr-4" href="{{ url_for('result') }}">My Results</a>
+        </div>
+    {% endif %}
+    {% for exam in exams %}
+        <article class="media content-section">
+            <img class="rounded-circle article-img" src="{{ url_for('static', filename='profile_pics/' + exam.author.image_file) }}">
+            <div class="media-body">
+                <div class="article-metadata">
+                    <small class="text-muted">Created By - {{ exam.author.username }}</small>
+                </div>
+                <a class="article-title" href="{{ url_for('join_exam', exam_id=exam.id) }}"><h2>{{ exam.topic }} Exam</h2></a>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>On</th>
+                            <th>Duration</th>
+                            <th>Negative %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th>{{ exam.start_time }}</th>
+                            <th>{{ exam.duration }} minutes</th>
+                            <th>{{ exam.negative }}%</th>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+    {% endfor %}
+{% endblock content %}
