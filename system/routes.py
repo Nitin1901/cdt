@@ -3,10 +3,11 @@ import csv
 import secrets
 from datetime import datetime, timedelta
 from PIL import Image
-from flask import render_template, url_for, flash, redirect, request, abort, send_file
+from flask import render_template, url_for, flash, redirect, request, abort, send_file, Response
 from werkzeug.utils import secure_filename
 from flask_mail import Message
 from system import app, db, bcrypt, mail
+from system.camera import VideoCamera
 from system.forms import RegistrationForm, LoginForm, UpdateAccountForm, CreateExamForm, JoinExamForm, SubmitExamForm, RequestResetForm, ResetPasswordForm
 from system.models import User, Exam, UserExam
 from flask_login import login_user, current_user, logout_user, login_required
@@ -160,12 +161,12 @@ def join_exam(exam_id):
             row = UserExam.query.filter_by(user_id=current_user.id, exam_id=exam_id).first()
             if not row:
                 if exam.exam_code == form.exam_code.data:
-                    if exam.start_time > datetime.now():
-                        flash('Exam did not start yet', 'danger')
-                    elif exam.start_time + timedelta(minutes=exam.duration) < datetime.now():
-                        flash('Exam completed', 'danger')
-                    else:
-                        return redirect(url_for('attempt_exam', exam_id=exam.id))
+                    # if exam.start_time > datetime.now():
+                    #     flash('Exam did not start yet', 'danger')
+                    # elif exam.start_time + timedelta(minutes=exam.duration) < datetime.now():
+                    #     flash('Exam completed', 'danger')
+                    # else:
+                    return redirect(url_for('attempt_exam', exam_id=exam.id))
                 else:
                     flash('Exam code incorrect', 'danger')
             else:
@@ -236,6 +237,18 @@ def result():
         return abort(403)
 
 
+def gen(camera):
+    while True:
+        frame = camera.get_frame()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen(VideoCamera()),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
 def send_reset_email(user):
     token = user.get_reset_token()
     msg = Message('Password Reset Request',
@@ -282,3 +295,4 @@ def reset_token(token):
 @app.route("/download")
 def download():
     return send_file('static/questions/sample.csv', mimetype='text/csv', attachment_filename='sample.csv', as_attachment=True)
+

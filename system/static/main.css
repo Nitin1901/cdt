@@ -79,3 +79,13 @@
     font-size: 2.5rem;
   }
   
+  .img-fluid {
+    max-width: 100%;
+    height: auto
+  }
+
+  .fix {
+    position: fixed;
+    width: 30%;
+    margin-top: 2%;
+  }
