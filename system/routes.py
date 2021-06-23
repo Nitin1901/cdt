@@ -160,12 +160,12 @@ def join_exam(exam_id):
             row = UserExam.query.filter_by(user_id=current_user.id, exam_id=exam_id).first()
             if not row:
                 if exam.exam_code == form.exam_code.data:
-                    # if exam.start_time > datetime.now():
-                    #     flash('Exam did not start yet', 'danger')
-                    # elif exam.start_time + timedelta(minutes=exam.duration) < datetime.now():
-                    #     flash('Exam completed', 'danger')
-                    # else:
-                    return redirect(url_for('attempt_exam', exam_id=exam.id))
+                    if exam.start_time > datetime.now():
+                        flash('Exam did not start yet', 'danger')
+                    elif exam.start_time + timedelta(minutes=exam.duration) < datetime.now():
+                        flash('Exam completed', 'danger')
+                    else:
+                        return redirect(url_for('attempt_exam', exam_id=exam.id))
                 else:
                     flash('Exam code incorrect', 'danger')
             else:
@@ -184,6 +184,10 @@ def attempt_exam(exam_id):
     test = get_questions(exam.questions)
     responses = []
     if request.method == 'POST':
+        row = UserExam.query.filter_by(user_id=current_user.id, exam_id=exam_id).first()
+        if row.attempted:
+            flash('Exam already attempted', 'danger')
+            return redirect(url_for('home'))
         for question in test:
             responses.append(request.form.get(str(question[6])))
         score = get_result(responses, test, exam.marks, exam.negative)
