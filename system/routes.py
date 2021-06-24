@@ -193,7 +193,7 @@ def join_exam(exam_id):
                     if current_user and verify_face(current_user.encoding_file, request.form['face_img']):
                         return redirect(url_for('attempt_exam', exam_id=exam.id))
                     else:
-                        flash('Login Unsuccessful. Face not recognized.', 'danger')
+                        flash('Joining Unsuccessful. Face not recognized.', 'danger')
                 else:
                     flash('Exam code incorrect', 'danger')
             else:
