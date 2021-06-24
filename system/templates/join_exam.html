@@ -18,10 +18,84 @@
                         {{ form.exam_code(class="form-control form-control-lg") }}
                     {% endif %}
                 </div>
+                <div class="form-group text-center">
+                    <video id="stream" width="600" height="480">
+                        <canvas id="capture" width="600" height="480">
+                        </canvas>
+                    </video><br>
+                    <button id="btn-capture" type="button" class="btn btn-info">Capture Image</button>
+                    <br><br>
+                    <div id="snapshot"></div>
+                    <input type="hidden" id="face_img" name="face_img">
+                </div>
             </fieldset>
             <div class="form-group">
                 {{ form.submit(class="btn btn-outline-info") }}
             </div>
         </form>
     </div>
+{% endblock content %}
+    
+{% block script %}
+    <script>
+        var btnCapture = document.getElementById("btn-capture");
+        var stream = document.getElementById("stream");
+        var capture = document.getElementById("capture");
+        var snapshot = document.getElementById("snapshot");
+        var cameraStream = null;
+            
+        btnCapture.addEventListener( "click", captureSnapshot );
+    
+        function startStreaming() {
+            var mediaSupport = 'mediaDevices' in navigator;
+            if( mediaSupport && null == cameraStream ) {
+                navigator.mediaDevices.getUserMedia( { video: true } )
+                .then( function( mediaStream ) {
+                    cameraStream = mediaStream;
+                    stream.srcObject = mediaStream;
+                    stream.play();
+                })
+                .catch( function( err ) {
+                    console.log( "Unable to access camera: " + err );
+                });
+            }
+            else {
+                alert( 'Your browser does not support media devices.' );
+                return;
+            }
+        }
+     
+        
+        function stopStreaming() {
+            if( null != cameraStream ) {
+                var track = cameraStream.getTracks()[ 0 ];
+                track.stop();
+                stream.load();
+                cameraStream = null;
+            }
+        }
+        
+        function captureSnapshot() {
+            if( null != cameraStream ) {
+                var ctx = capture.getContext( '2d' );
+                var img = new Image();
+                ctx.drawImage( stream, 0, 0, capture.width, capture.height );
+                img.src		= capture.toDataURL( "image/png" );
+                img.width	= 600;
+                img.height	= 480;
+                //console.log(capture.toDataURL( "image/png" ));
+                snapshot.innerHTML = '';
+                snapshot.appendChild( img );
+                var res = capture.toDataURL("image/png");
+                snapshot.innerHTML = '';
+                snapshot.appendChild( img );
+                $("#face_img").val(res)    
+            }
+        }
+        window.onload = function() {
+            startStreaming();
+            captureSnapshot();
+            init_clock();
+        }
+    </script>
 {% endblock %}

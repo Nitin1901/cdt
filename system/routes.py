@@ -3,6 +3,11 @@ import csv
 import secrets
 from datetime import datetime, timedelta
 from PIL import Image
+import base64
+from io import BytesIO
+import numpy as np
+import cv2
+import face_recognition
 from flask import render_template, url_for, flash, redirect, request, abort, send_file, Response
 from werkzeug.utils import secure_filename
 from flask_mail import Message
@@ -99,6 +104,25 @@ def account():
                            image_file=image_file, form=form)
 
 
+@app.route("/<int:user_id>/update", methods=['GET', 'POST'])
+@login_required
+def update_face(user_id):
+    user = User.query.get_or_404(user_id)
+    if user_id != user.id:
+        abort(403)
+    if request.method == 'POST':
+        try:
+            encoding_file = image_to_encoding(request.form['face_img'], user.username)
+            user.face_access = True
+            user.encoding_file = encoding_file
+            db.session.add(user)
+            db.session.commit()
+            flash(f'Face data updated successfully.', 'success')
+        except:
+            flash('Face not recognized.', 'danger')
+        return redirect(url_for('account'))
+
+
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -166,7 +190,10 @@ def join_exam(exam_id):
                     # elif exam.start_time + timedelta(minutes=exam.duration) < datetime.now():
                     #     flash('Exam completed', 'danger')
                     # else:
-                    return redirect(url_for('attempt_exam', exam_id=exam.id))
+                    if current_user and verify_face(current_user.encoding_file, request.form['face_img']):
+                        return redirect(url_for('attempt_exam', exam_id=exam.id))
+                    else:
+                        flash('Login Unsuccessful. Face not recognized.', 'danger')
                 else:
                     flash('Exam code incorrect', 'danger')
             else:
@@ -186,17 +213,18 @@ def attempt_exam(exam_id):
     responses = []
     if request.method == 'POST':
         row = UserExam.query.filter_by(user_id=current_user.id, exam_id=exam_id).first()
-        if row.attempted:
+        if row:
             flash('Exam already attempted', 'danger')
             return redirect(url_for('home'))
-        for question in test:
-            responses.append(request.form.get(str(question[6])))
-        score = get_result(responses, test, exam.marks, exam.negative)
-        row = UserExam(user_id=current_user.id, exam_id=exam_id, attempted=True, marks=score)
-        db.session.add(row)
-        db.session.commit()
-        flash(f'Exam submitted! Your score is {score}', 'success')
-        return redirect(url_for('home'))
+        else:
+            for question in test:
+                responses.append(request.form.get(str(question[6])))
+            score = get_result(responses, test, exam.marks, exam.negative)
+            row = UserExam(user_id=current_user.id, exam_id=exam_id, attempted=True, marks=score)
+            db.session.add(row)
+            db.session.commit()
+            flash(f'Exam submitted! Your score is {score}', 'success')
+            return redirect(url_for('home'))
     else:
         return render_template('exam.html', title=f'{exam.topic} Exam', test=test, form=form)
 
@@ -296,3 +324,56 @@ def reset_token(token):
 def download():
     return send_file('static/questions/sample.csv', mimetype='text/csv', attachment_filename='sample.csv', as_attachment=True)
 
+
+def image_to_encoding(image, username):
+    file_path = username + '.npy'
+    encoding_path = os.path.join(app.root_path, 'static/encodings', file_path)
+
+    sbuf = BytesIO()
+    sbuf.write(base64.b64decode(image[22:]))
+    img = Image.open(sbuf)
+
+    img = cv2.cvtColor(np.array(img), cv2.COLOR_BGR2RGB)
+    img_enc = face_recognition.face_encodings(img)[0]
+    if img_enc.size == 0:
+        return False
+    np.save(encoding_path, img_enc)
+
+    return file_path
+
+
+def verify_face(encoding_file, image):
+    encoding_path = os.path.join(app.root_path, 'static/encodings', current_user.encoding_file)
+    face_encodings_for_id = np.load(encoding_path, allow_pickle=True)
+
+    sbuf = BytesIO()
+    sbuf.write(base64.b64decode(image[22:]))
+    img = Image.open(sbuf)
+
+    img = cv2.resize(np.array(img), (0, 0), fx=0.6, fy=0.6)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    face_detector = cv2.CascadeClassifier(os.path.join(app.root_path, 'static/models', 'haarcascade_frontalface_alt2.xml'))
+     
+    faces = face_detector.detectMultiScale(
+        gray,
+        scaleFactor=1.2,
+        minNeighbors=5,
+        minSize=(50, 50),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+
+    result = [None]*len(faces)
+
+    for idx, (x,y,w,h) in enumerate(faces):
+        encoding = face_recognition.face_encodings(rgb, [(y, x+w, y+h, x)])[0]
+        if encoding.size == 0:
+            print("No face detected...")
+            return False
+        result[idx] = face_recognition.compare_faces([face_encodings_for_id], encoding, 0.3)[0]
+
+    if any(result):
+        return True
+    return False
