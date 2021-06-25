@@ -1,9 +1,17 @@
-import cv2
-import os
+import cv2, os
+from system.utils import detect_faces, detect_eyes, cut_eyebrows, blob_process
 from system import app
 
-face_cascade=cv2.CascadeClassifier(os.path.join(app.root_path, 'static/models', 'haarcascade_frontalface_alt2.xml'))
-ds_factor=0.6
+
+BASE = os.path.join(app.root_path, 'static', 'models')
+
+face_cascade = cv2.CascadeClassifier(os.path.join(BASE, 'haarcascade_frontalface_default.xml'))
+eye_cascade = cv2.CascadeClassifier(os.path.join(BASE, 'haarcascade_eye.xml'))
+detector_params = cv2.SimpleBlobDetector_Params()
+detector_params.filterByArea = True
+detector_params.maxArea = 1500
+detector = cv2.SimpleBlobDetector_create(detector_params)
+
 
 class VideoCamera(object):
     def __init__(self):
@@ -13,12 +21,22 @@ class VideoCamera(object):
         self.video.release()
     
     def get_frame(self):
-        success, image = self.video.read()
-        image=cv2.resize(image,None,fx=ds_factor,fy=ds_factor,interpolation=cv2.INTER_AREA)
-        gray=cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
-        face_rects=face_cascade.detectMultiScale(gray,1.3,5)
-        for (x,y,w,h) in face_rects:
-        	cv2.rectangle(image,(x,y),(x+w,y+h),(0,255,0),2)
-        	break
-        ret, jpeg = cv2.imencode('.jpg', image)
-        return jpeg.tobytes()
+        _, frame = self.video.read()
+        frame = cv2.resize(frame, (640, 480))
+        (face_frame, (x, y, w, h), persons) = detect_faces(frame, face_cascade)
+        if face_frame is not None:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            if face_frame is not None:
+                eyes = detect_eyes(face_frame, eye_cascade)
+                for eye in eyes:
+                    if eye is not None:
+                        threshold = 55
+                        eye = cut_eyebrows(eye)
+                        keypoints = blob_process(eye, threshold, detector)
+                        eye = cv2.drawKeypoints(eye, keypoints, eye, (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+            ret, jpeg = cv2.imencode('.jpg', frame)
+            return (jpeg.tobytes(), persons)
+
+        else:
+            return None, 0
