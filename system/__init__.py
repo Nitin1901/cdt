@@ -18,8 +18,8 @@ login_manager.login_message_category = 'info'
 app.config['MAIL_SERVER'] = 'smtp.googlemail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'musicssns@gmail.com'
-app.config['MAIL_PASSWORD'] = 'MobileNetV2'
+app.config['MAIL_USERNAME'] = 'EMAIL'
+app.config['MAIL_PASSWORD'] = 'PASS'
 mail = Mail(app)
 
 from system import routes
