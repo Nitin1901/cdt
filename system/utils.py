@@ -1,11 +1,11 @@
 import numpy as np
-import cv2, os
+import cv2
 from system import app
 
 
 def detect_faces(img, cascade):
     gray_frame = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    coords = cascade.detectMultiScale(gray_frame, 1.3, 5)
+    coords = cascade.detectMultiScale(gray_frame, 1.5, 5)
     if len(coords) > 1:
         biggest = (0, 0, 0, 0)
         for i in coords:

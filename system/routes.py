@@ -1,6 +1,7 @@
 import os
 import csv
 import secrets
+import threading
 from datetime import datetime, timedelta
 from PIL import Image
 import base64
@@ -15,6 +16,7 @@ from system import app, db, bcrypt, mail
 from system.camera import VideoCamera
 from system.forms import RegistrationForm, LoginForm, UpdateAccountForm, CreateExamForm, JoinExamForm, SubmitExamForm, RequestResetForm, ResetPasswordForm
 from system.models import User, Exam, UserExam
+from system.detection import detect_cheating
 from flask_login import login_user, current_user, logout_user, login_required
 
 
@@ -211,6 +213,8 @@ def attempt_exam(exam_id):
     form = SubmitExamForm()
     test = get_questions(exam.questions)
     responses = []
+    x = threading.Thread(target=detect_cheating, args=[current_user.username, exam.duration], daemon=True)
+    x.start()
     if request.method == 'POST':
         row = UserExam.query.filter_by(user_id=current_user.id, exam_id=exam_id).first()
         if row:
@@ -265,6 +269,7 @@ def result():
         return abort(403)
 
 
+"""
 def gen(camera):
     while True:
         frame, persons = camera.get_frame()
@@ -282,6 +287,7 @@ def gen(camera):
 @app.route('/video_feed')
 def video_feed():
     return Response(gen(VideoCamera()), mimetype='multipart/x-mixed-replace; boundary=frame')
+"""
 
 
 def send_reset_email(user):
@@ -349,7 +355,7 @@ def image_to_encoding(image, username):
     return file_path
 
 
-def verify_face(encoding_file, image):
+def verify_face(encodings, image):
     encoding_path = os.path.join(app.root_path, 'static/encodings', current_user.encoding_file)
     face_encodings_for_id = np.load(encoding_path, allow_pickle=True)
 
@@ -384,3 +390,110 @@ def verify_face(encoding_file, image):
     if any(result):
         return True
     return False
+
+
+"""
+def detect_cheating(name, duration):
+
+    BASE = os.path.join(app.root_path, 'static', 'models')
+
+    start = datetime.now()
+
+    classNames= []
+    classFile = os.path.join(BASE, 'coco.names')
+    with open(classFile, 'rt') as f:
+        classNames = f.read().rstrip('\n').split('\n')
+
+    configPath = os.path.join(BASE, 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt')
+    weightsPath = os.path.join(BASE, 'frozen_inference_graph.pb')
+    warnings = 5
+    count = 0
+    threshold = 10
+    gaze = GazeTracking()
+    detector = dlib.get_frontal_face_detector()
+
+    net = cv2.dnn_DetectionModel(weightsPath, configPath)
+    net.setInputSize(320,320)
+    net.setInputScale(1.0/ 127.5)
+    net.setInputMean((127.5, 127.5, 127.5))
+    net.setInputSwapRB(True)
+
+    webcam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+    while True:
+
+        if start + timedelta(minutes=duration) == datetime.now():
+            flash('Time is up', 'danger')
+            return redirect(url_for('home'))
+
+        _, frame = webcam.read()
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = detector(gray)
+
+        classIds, confs, bbox = net.detect(frame, confThreshold=0.5)
+        bbox = list(bbox)
+        confs = list(np.array(confs).reshape(1,-1)[0])
+        confs = list(map(float,confs))
+
+        indices = cv2.dnn.NMSBoxes(bbox, confs, 0.5, 0.2)
+        for i in indices:
+            i = i[0]
+            box = bbox[i]
+            x,y,w,h = box[0],box[1],box[2],box[3]
+            cv2.rectangle(frame, (x,y), (x+w,h+y), color=(0, 255, 0), thickness=2)
+            category = classNames[classIds[i][0]-1].upper()
+            cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,255,0),2)
+            if category in ['CELL PHONE', 'LAPTOP']:
+                count += 1
+                winsound.Beep(2500, 100)
+                cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,0,255),2)
+                if count%warnings == 0:
+                    path = os.path.join(app.root_path, 'static', 'logs', f'{name}_{count//warnings}.png')
+                    cv2.imwrite(path, frame)
+                    print('Saved frame to file system')
+                if count == threshold:
+                    with app.test_request_context():
+                        flash('Found copying! Disqualified!', 'danger')
+                        print('Found copying! Disqualified!')
+                        return redirect(url_for('home'))
+
+        i = 0
+        for face in faces:
+            x, y = face.left(), face.top()
+            x1, y1 = face.right(), face.bottom()
+            cv2.rectangle(frame, (x, y), (x1, y1), (0, 255, 0), 2)
+            i += 1
+            cv2.putText(frame, 'FACE '+str(i), (x-10, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+            gaze.refresh(frame)
+
+            frame = gaze.annotated_frame()
+            text = ""
+
+            if gaze.is_blinking():
+                text = "Blinking"
+            elif gaze.is_right():
+                text = "Looking right"
+            elif gaze.is_left():
+                text = "Looking left"
+            elif gaze.is_center():
+                text = "Looking center"
+
+            #cv2.putText(frame, text, (90, 60), cv2.FONT_HERSHEY_DUPLEX, 1.2, (147, 58, 31), 2)
+
+            left_pupil = gaze.pupil_left_coords()
+            right_pupil = gaze.pupil_right_coords()
+            cv2.putText(frame, "Left pupil:  " + str(left_pupil), (50, 50), cv2.FONT_HERSHEY_DUPLEX, 0.5, (147, 58, 31), 1)
+            cv2.putText(frame, "Right pupil: " + str(right_pupil), (50, 100), cv2.FONT_HERSHEY_DUPLEX, 0.5, (147, 58, 31), 1)
+
+        cv2.imshow("Live", frame)
+
+        if cv2.waitKey(1) == 27:
+            break
+
+    cv2.destroyAllWindows()
+    webcam.release()
+
+    return redirect(url_for('home'))
+"""
