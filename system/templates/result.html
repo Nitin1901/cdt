@@ -16,7 +16,11 @@
                     <tr>
                         <th>{{ exam.start_time.strftime('%Y-%m-%d') }}</th>
                         <th>{{ exam.duration }} minutes</th>
-                        <th>{{ exam.marks }}</th>
+                        {% if exam.corrected %}
+                            <th>{{ exam.marks }}</th>
+                        {% else %}
+                            <th><i>{{ exam.marks }}(may vary)</i></th>
+                        {% endif %}
                     </tr>
                 </tbody>
             </table>

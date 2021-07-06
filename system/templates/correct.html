@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+{% block content %}
+    <div class="content-section">
+        <form method="POST" action="">
+            <h1>Responses for userid {{ details.user_id }}</h1>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="col-sm-8">
+                            Question
+                        </th>
+                        <th class="col-sm-1">
+                            Correct answer
+                        </th>
+                        <th class="col-sm-1">
+                            Student's answer
+                        </th>
+                        <th class="col-sm-2">
+                            Marks
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in range(n) %}
+                        <tr>
+                            <td>
+                                {{ questions[i][0] }}
+                            </td>
+                            <td>
+                                {{ questions[i][-2] }}
+                            </td>
+                            <td>
+                                {{ answers[i][0] }}
+                            </td>
+                            <td>
+                                {% if answers[i][0] == questions[i][-2] %}
+                                    <input type="number" name="{{ questions[i][6] }}" value="{{ max_marks }}" min=0 max={{ max_marks }}>
+                                {% else %}
+                                    <input type="number" name="{{ questions[i][6] }}" value="0" min=0 max={{ max_marks }}>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="form-group">
+                {{ form.submit(class="btn btn-outline-info") }}
+            </div>
+        </form>
+    </div>
+    <div class="content-section">
+        {% for image_file in images %}
+            <img src="{{ image_file }}" class="img-fluid" alt="Responsive image">
+        {% endfor %}
+    </div>
+{% endblock %}

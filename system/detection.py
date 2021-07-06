@@ -3,25 +3,30 @@ from datetime import datetime, timedelta
 import numpy as np
 from system.gaze_tracking import GazeTracking
 from system import app
-from flask import flash, redirect, url_for
 
 
-def detect_cheating(name, duration):
+def detect_cheating(name, exam):
 
-    BASE = os.path.join(app.root_path, 'static', 'models')
+    BASE = os.path.join(app.root_path, 'static')
+
+    temp = os.path.join(BASE, 'logs', str(exam.id), str(name))
+
+    try:
+        os.mkdir(temp)
+    except:
+        pass
 
     start = datetime.now()
 
     classNames= []
-    classFile = os.path.join(BASE, 'coco.names')
+    classFile = os.path.join(BASE, 'models', 'coco.names')
     with open(classFile, 'rt') as f:
         classNames = f.read().rstrip('\n').split('\n')
 
-    configPath = os.path.join(BASE, 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt')
-    weightsPath = os.path.join(BASE, 'frozen_inference_graph.pb')
+    configPath = os.path.join(BASE, 'models', 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt')
+    weightsPath = os.path.join(BASE, 'models', 'frozen_inference_graph.pb')
     warnings = 5
     count = 0
-    threshold = 10
     gaze = GazeTracking()
     detector = dlib.get_frontal_face_detector()
 
@@ -35,11 +40,13 @@ def detect_cheating(name, duration):
 
     while True:
 
-        if start + timedelta(minutes=duration) == datetime.now():
-            flash('Time is up', 'danger')
-            return redirect(url_for('home'))
+        if start + timedelta(minutes=exam.duration) == datetime.now():
+            break
 
-        _, frame = webcam.read()
+        ret, frame = webcam.read()
+
+        if not ret:
+            break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = detector(gray)
@@ -57,19 +64,14 @@ def detect_cheating(name, duration):
             cv2.rectangle(frame, (x,y), (x+w,h+y), color=(0, 255, 0), thickness=2)
             category = classNames[classIds[i][0]-1].upper()
             cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,255,0),2)
-            if category in ['CELL PHONE', 'LAPTOP']:
+            if category in ['CELL PHONE', 'LAPTOP'] or len(faces) > 1:
                 count += 1
                 winsound.Beep(2500, 100)
                 cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,0,255),2)
                 if count%warnings == 0:
-                    path = os.path.join(app.root_path, 'static', 'logs', f'{name}_{count//warnings}.png')
+                    path = os.path.join(BASE, 'logs', str(exam.id), str(name), f'{count//warnings}.png')
                     cv2.imwrite(path, frame)
                     print('Saved frame to file system')
-                if count == threshold:
-                    print('Found copying! Disqualified!')
-                    with app.app_context():
-                        print(app)
-                        return redirect(url_for('home'))
 
         i = 0
         for face in faces:
@@ -108,4 +110,4 @@ def detect_cheating(name, duration):
     cv2.destroyAllWindows()
     webcam.release()
 
-    return redirect(url_for('home'))
+    return

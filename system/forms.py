@@ -53,7 +53,6 @@ class CreateExamForm(FlaskForm):
 	topic = StringField('Topic', validators=[DataRequired()])
 	start = DateTimeField('Start date and time', validators=[DataRequired()], default=datetime.now()+timedelta(hours=2))
 	marks = IntegerField('Total marks', validators=[NumberRange(min=10, max=100), DataRequired()])
-	negative = IntegerField('Enable negative marking in % ', validators=[NumberRange(min=0, max=50), DataRequired()])
 	duration = IntegerField('Duration (in min)', validators=[DataRequired()])
 	exam_code = StringField('Exam Code', [Length(min=3, max=6)])
 	submit = SubmitField('Create')
@@ -65,7 +64,7 @@ class JoinExamForm(FlaskForm):
 
 
 class SubmitExamForm(FlaskForm):
-	submit = SubmitField('Finish Test')
+	submit = SubmitField('Submit')
 
 
 class RequestResetForm(FlaskForm):

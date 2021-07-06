@@ -1,26 +1,41 @@
-import os
-import csv
-import secrets
-import threading
+import os, secrets, threading, multiprocessing
 from datetime import datetime, timedelta
-from PIL import Image
-import base64
-from io import BytesIO
-import numpy as np
-import cv2
-import face_recognition
-from flask import render_template, url_for, flash, redirect, request, abort, send_file, Response
+from flask import (render_template, 
+                    url_for, 
+                    flash, 
+                    redirect, 
+                    request, 
+                    abort, 
+                    send_file)
+from flask_login import (login_user, 
+                        current_user, 
+                        logout_user, 
+                        login_required)
 from werkzeug.utils import secure_filename
-from flask_mail import Message
-from system import app, db, bcrypt, mail
-from system.camera import VideoCamera
-from system.forms import RegistrationForm, LoginForm, UpdateAccountForm, CreateExamForm, JoinExamForm, SubmitExamForm, RequestResetForm, ResetPasswordForm
-from system.models import User, Exam, UserExam
+from system import (app, 
+                    db, 
+                    bcrypt)
+from system.forms import (RegistrationForm, 
+                            LoginForm, 
+                            UpdateAccountForm, 
+                            CreateExamForm, 
+                            JoinExamForm, 
+                            SubmitExamForm, 
+                            RequestResetForm, 
+                            ResetPasswordForm)
+from system.models import (User, 
+                            Exam, 
+                            UserExam)
 from system.detection import detect_cheating
-from flask_login import login_user, current_user, logout_user, login_required
-
-
-ALLOWED_EXTENSIONS = {'csv'}
+from system.utils import (send_reset_email, 
+                            save_picture, 
+                            allowed_file, 
+                            get_questions, 
+                            image_to_encoding, 
+                            verify_face,
+                            get_result,
+                            store_responses,
+                            parse_answers)
 
 
 @app.route("/")
@@ -73,20 +88,6 @@ def logout():
     return redirect(url_for('home'))
 
 
-def save_picture(form_picture):
-    random_hex = secrets.token_hex(8)
-    _, f_ext = os.path.splitext(form_picture.filename)
-    picture_fn = random_hex + f_ext
-    picture_path = os.path.join(app.root_path, 'static/profile_pics', picture_fn)
-
-    output_size = (125, 125)
-    i = Image.open(form_picture)
-    i.thumbnail(output_size)
-    i.save(picture_path)
-
-    return picture_fn
-
-
 @app.route("/account", methods=['GET', 'POST'])
 @login_required
 def account():
@@ -125,11 +126,6 @@ def update_face(user_id):
         return redirect(url_for('account'))
 
 
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
 @app.route("/create_exam", methods=['GET', 'POST'])
 @login_required
 def create_exam():
@@ -150,7 +146,6 @@ def create_exam():
                         topic=form.topic.data,
                         start_time=form.start.data,
                         marks=form.marks.data,
-                        negative=form.negative.data,
                         duration=form.duration.data,
                         exam_code=form.exam_code.data,
                         questions=filename,
@@ -159,6 +154,7 @@ def create_exam():
                     db.session.add(exam)
                     db.session.commit()
                     flash('Exam created successfully', 'success')
+                    os.mkdir(os.path.join(app.root_path, 'static', 'logs', str(exam.id)))
                     return redirect(url_for('home'))
                 else:
                     flash('Invalid file', 'danger')
@@ -184,6 +180,10 @@ def join_exam(exam_id):
         form = JoinExamForm()
         if form.validate_on_submit():
             exam = Exam.query.filter_by(id=exam_id).first()
+            try:
+                os.mkdir(os.path.join(app.root_path, 'static', 'logs', str(exam.id)))
+            except:
+                pass
             row = UserExam.query.filter_by(user_id=current_user.id, exam_id=exam_id).first()
             if not row:
                 if exam.exam_code == form.exam_code.data:
@@ -203,7 +203,7 @@ def join_exam(exam_id):
                 return redirect(url_for('home'))
         return render_template('join_exam.html', title='Join Exam', form=form)
     else:
-        abort(403)
+        return redirect(url_for('correction', exam_id=exam_id))
 
 
 @app.route("/attempt_exam/<int:exam_id>", methods=['GET', 'POST'])
@@ -213,7 +213,7 @@ def attempt_exam(exam_id):
     form = SubmitExamForm()
     test = get_questions(exam.questions)
     responses = []
-    x = threading.Thread(target=detect_cheating, args=[current_user.username, exam.duration], daemon=True)
+    x = threading.Thread(target=detect_cheating, args=[current_user.id, exam], daemon=True)
     x.start()
     if request.method == 'POST':
         row = UserExam.query.filter_by(user_id=current_user.id, exam_id=exam_id).first()
@@ -221,38 +221,21 @@ def attempt_exam(exam_id):
             flash('Exam already attempted', 'danger')
             return redirect(url_for('home'))
         else:
-            for question in test:
-                responses.append(request.form.get(str(question[6])))
-            score = get_result(responses, test, exam.marks, exam.negative)
-            row = UserExam(user_id=current_user.id, exam_id=exam_id, attempted=True, marks=score)
-            db.session.add(row)
-            db.session.commit()
-            flash(f'Exam submitted! Your score is {score}', 'success')
-            return redirect(url_for('home'))
+            if x.is_alive():
+                for question in test:
+                    responses.append(request.form.get(str(question[6])))
+                path = store_responses(str(current_user.id)+str(exam.id), responses)
+                score = get_result(responses, test, exam.marks)
+                row = UserExam(user_id=current_user.id, exam_id=exam_id, attempted=True, attempted_file=path, marks=score)
+                db.session.add(row)
+                db.session.commit()
+                flash(f'Exam submitted!', 'success')
+                return redirect(url_for('home'))
+            else:
+                flash(f'Exam was submitted late!', 'danger')
+                return redirect(url_for('home'))
     else:
         return render_template('exam.html', title=f'{exam.topic} Exam', test=test, form=form)
-
-
-def get_questions(filename):
-    filename = os.path.join(app.root_path, 'static/questions', filename)
-    with open(filename, newline='') as f:
-        reader = csv.reader(f)
-        data = list(reader)
-    for idx, row in enumerate(data):
-        data[idx].append(idx)
-    return data[1:]
-
-
-def get_result(responses, test, marks, negative):
-    count = 0
-    per_question = marks/len(responses)
-    for i in range(len(responses)):
-        if responses[i]:
-            if responses[i] == test[i][-2]:
-                count += per_question
-            else:
-                count -= negative*per_question/100
-    return count
 
 
 @app.route("/result")
@@ -261,12 +244,50 @@ def result():
     if not current_user.user_access:
         exams = UserExam.query\
                 .join(Exam, Exam.id == UserExam.exam_id)\
-                .add_columns(UserExam.exam_id, Exam.topic, UserExam.marks, Exam.start_time, Exam.duration)\
+                .add_columns(UserExam.exam_id, Exam.topic, UserExam.marks, Exam.start_time, Exam.duration, UserExam.corrected)\
                 .filter(UserExam.user_id == current_user.id)\
                 .all()
         return render_template('result.html', exams=exams)
     else:
         return abort(403)
+
+
+@app.route("/correction/<int:exam_id>", methods=['GET', 'POST'])
+@login_required
+def correction(exam_id):
+    if current_user.user_access:
+        user_attempts = UserExam.query.filter(UserExam.exam_id == exam_id, UserExam.attempted == True, UserExam.corrected == False).all()
+        topic = Exam.query.filter_by(id=exam_id).first()
+        return render_template('correction.html', title='Correction', user_attempts=user_attempts, topic=topic)
+    else:
+        abort(403)
+
+
+@app.route("/correct/<int:exam_id>", methods=['GET', 'POST'])
+@login_required
+def correct(exam_id):
+    details = UserExam.query.filter_by(id=exam_id).first()
+    exam = Exam.query.filter_by(id=details.exam_id).first()
+    questions = get_questions(exam.questions)
+    answers = parse_answers(details.attempted_file)
+    form = SubmitExamForm()
+    score = 0
+    if request.method == 'POST':
+        for i in range(len(answers)):
+            score += int(request.form.get(str(questions[i][6])))
+        print(score)
+        details.marks = score
+        details.corrected = True
+        db.session.add(details)
+        db.session.commit()
+        flash('Marks updated!', 'success')
+        return redirect(url_for('correction', exam_id=exam.id))
+    path = os.path.join(app.root_path, 'static', 'logs', str(details.exam_id), str(details.user_id))
+    images = []
+    for img in os.listdir(path):
+        images.append(os.path.join('..', 'static', 'logs', str(details.exam_id), str(details.user_id), img))
+    print(images)
+    return render_template('correct.html', details=details, n=len(answers), max_marks=exam.marks//len(answers), questions=questions, answers=answers, form=form, images=images)
 
 
 """
@@ -288,18 +309,6 @@ def gen(camera):
 def video_feed():
     return Response(gen(VideoCamera()), mimetype='multipart/x-mixed-replace; boundary=frame')
 """
-
-
-def send_reset_email(user):
-    token = user.get_reset_token()
-    msg = Message('Password Reset Request',
-                  sender='noreply@demo.com',
-                  recipients=[user.email])
-    msg.body = f'''To reset your password, visit the following link:
-{url_for('reset_token', token=token, _external=True)}
-If you did not make this request then simply ignore this email and no changes will be made.
-'''
-    mail.send(msg)
 
 
 @app.route("/reset_password", methods=['GET', 'POST'])
@@ -336,164 +345,3 @@ def reset_token(token):
 @app.route("/download")
 def download():
     return send_file('static/questions/sample.csv', mimetype='text/csv', attachment_filename='sample.csv', as_attachment=True)
-
-
-def image_to_encoding(image, username):
-    file_path = username + '.npy'
-    encoding_path = os.path.join(app.root_path, 'static/encodings', file_path)
-
-    sbuf = BytesIO()
-    sbuf.write(base64.b64decode(image[22:]))
-    img = Image.open(sbuf)
-
-    img = cv2.cvtColor(np.array(img), cv2.COLOR_BGR2RGB)
-    img_enc = face_recognition.face_encodings(img)[0]
-    if img_enc.size == 0:
-        return False
-    np.save(encoding_path, img_enc)
-
-    return file_path
-
-
-def verify_face(encodings, image):
-    encoding_path = os.path.join(app.root_path, 'static/encodings', current_user.encoding_file)
-    face_encodings_for_id = np.load(encoding_path, allow_pickle=True)
-
-    sbuf = BytesIO()
-    sbuf.write(base64.b64decode(image[22:]))
-    img = Image.open(sbuf)
-
-    img = cv2.resize(np.array(img), (0, 0), fx=0.6, fy=0.6)
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-    face_detector = cv2.CascadeClassifier(os.path.join(app.root_path, 'static/models', 'haarcascade_frontalface_alt2.xml'))
-     
-    faces = face_detector.detectMultiScale(
-        gray,
-        scaleFactor=1.2,
-        minNeighbors=5,
-        minSize=(50, 50),
-        flags=cv2.CASCADE_SCALE_IMAGE
-    )
-
-    result = [None]*len(faces)
-
-    for idx, (x,y,w,h) in enumerate(faces):
-        encoding = face_recognition.face_encodings(rgb, [(y, x+w, y+h, x)])[0]
-        if encoding.size == 0:
-            print("No face detected...")
-            return False
-        result[idx] = face_recognition.compare_faces([face_encodings_for_id], encoding, 0.3)[0]
-
-    if any(result):
-        return True
-    return False
-
-
-"""
-def detect_cheating(name, duration):
-
-    BASE = os.path.join(app.root_path, 'static', 'models')
-
-    start = datetime.now()
-
-    classNames= []
-    classFile = os.path.join(BASE, 'coco.names')
-    with open(classFile, 'rt') as f:
-        classNames = f.read().rstrip('\n').split('\n')
-
-    configPath = os.path.join(BASE, 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt')
-    weightsPath = os.path.join(BASE, 'frozen_inference_graph.pb')
-    warnings = 5
-    count = 0
-    threshold = 10
-    gaze = GazeTracking()
-    detector = dlib.get_frontal_face_detector()
-
-    net = cv2.dnn_DetectionModel(weightsPath, configPath)
-    net.setInputSize(320,320)
-    net.setInputScale(1.0/ 127.5)
-    net.setInputMean((127.5, 127.5, 127.5))
-    net.setInputSwapRB(True)
-
-    webcam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-
-    while True:
-
-        if start + timedelta(minutes=duration) == datetime.now():
-            flash('Time is up', 'danger')
-            return redirect(url_for('home'))
-
-        _, frame = webcam.read()
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = detector(gray)
-
-        classIds, confs, bbox = net.detect(frame, confThreshold=0.5)
-        bbox = list(bbox)
-        confs = list(np.array(confs).reshape(1,-1)[0])
-        confs = list(map(float,confs))
-
-        indices = cv2.dnn.NMSBoxes(bbox, confs, 0.5, 0.2)
-        for i in indices:
-            i = i[0]
-            box = bbox[i]
-            x,y,w,h = box[0],box[1],box[2],box[3]
-            cv2.rectangle(frame, (x,y), (x+w,h+y), color=(0, 255, 0), thickness=2)
-            category = classNames[classIds[i][0]-1].upper()
-            cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,255,0),2)
-            if category in ['CELL PHONE', 'LAPTOP']:
-                count += 1
-                winsound.Beep(2500, 100)
-                cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,0,255),2)
-                if count%warnings == 0:
-                    path = os.path.join(app.root_path, 'static', 'logs', f'{name}_{count//warnings}.png')
-                    cv2.imwrite(path, frame)
-                    print('Saved frame to file system')
-                if count == threshold:
-                    with app.test_request_context():
-                        flash('Found copying! Disqualified!', 'danger')
-                        print('Found copying! Disqualified!')
-                        return redirect(url_for('home'))
-
-        i = 0
-        for face in faces:
-            x, y = face.left(), face.top()
-            x1, y1 = face.right(), face.bottom()
-            cv2.rectangle(frame, (x, y), (x1, y1), (0, 255, 0), 2)
-            i += 1
-            cv2.putText(frame, 'FACE '+str(i), (x-10, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
-            gaze.refresh(frame)
-
-            frame = gaze.annotated_frame()
-            text = ""
-
-            if gaze.is_blinking():
-                text = "Blinking"
-            elif gaze.is_right():
-                text = "Looking right"
-            elif gaze.is_left():
-                text = "Looking left"
-            elif gaze.is_center():
-                text = "Looking center"
-
-            #cv2.putText(frame, text, (90, 60), cv2.FONT_HERSHEY_DUPLEX, 1.2, (147, 58, 31), 2)
-
-            left_pupil = gaze.pupil_left_coords()
-            right_pupil = gaze.pupil_right_coords()
-            cv2.putText(frame, "Left pupil:  " + str(left_pupil), (50, 50), cv2.FONT_HERSHEY_DUPLEX, 0.5, (147, 58, 31), 1)
-            cv2.putText(frame, "Right pupil: " + str(right_pupil), (50, 100), cv2.FONT_HERSHEY_DUPLEX, 0.5, (147, 58, 31), 1)
-
-        cv2.imshow("Live", frame)
-
-        if cv2.waitKey(1) == 27:
-            break
-
-    cv2.destroyAllWindows()
-    webcam.release()
-
-    return redirect(url_for('home'))
-"""
