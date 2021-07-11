@@ -177,9 +177,9 @@ def previous_exam():
 @login_required
 def join_exam(exam_id):
     if not current_user.user_access:
+        exam = Exam.query.filter_by(id=exam_id).first()
         form = JoinExamForm()
         if form.validate_on_submit():
-            exam = Exam.query.filter_by(id=exam_id).first()
             try:
                 os.mkdir(os.path.join(app.root_path, 'static', 'logs', str(exam.id)))
             except:
@@ -189,19 +189,19 @@ def join_exam(exam_id):
                 if exam.exam_code == form.exam_code.data:
                     # if exam.start_time > datetime.now():
                     #     flash('Exam did not start yet', 'danger')
-                    # elif exam.start_time + timedelta(minutes=exam.duration) < datetime.now():
-                    #     flash('Exam completed', 'danger')
-                    # else:
-                    if current_user and verify_face(current_user.encoding_file, request.form['face_img']):
-                        return redirect(url_for('attempt_exam', exam_id=exam.id))
+                    if exam.start_time + timedelta(minutes=exam.duration) < datetime.now():
+                        flash('Exam completed', 'danger')
                     else:
-                        flash('Joining Unsuccessful. Face not recognized.', 'danger')
+                        if current_user and verify_face(current_user.encoding_file, request.form['face_img']):
+                            return redirect(url_for('attempt_exam', exam_id=exam.id))
+                        else:
+                            flash('Joining Unsuccessful. Face not recognized.', 'danger')
                 else:
                     flash('Exam code incorrect', 'danger')
             else:
                 flash('Exam already attempted', 'danger')
                 return redirect(url_for('home'))
-        return render_template('join_exam.html', title='Join Exam', form=form)
+        return render_template('join_exam.html', title='Join Exam', form=form, time=exam.duration*60000, exam_id=exam_id)
     else:
         return redirect(url_for('correction', exam_id=exam_id))
 
@@ -235,7 +235,7 @@ def attempt_exam(exam_id):
                 flash(f'Exam was submitted late!', 'danger')
                 return redirect(url_for('home'))
     else:
-        return render_template('exam.html', title=f'{exam.topic} Exam', test=test, form=form)
+        return render_template('exam.html', title=f'{exam.topic} Exam', test=test, form=form, time=exam.duration*60000, exam_id=exam_id)
 
 
 @app.route("/result")
