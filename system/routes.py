@@ -18,8 +18,8 @@ from system import (app,
 from system.forms import (RegistrationForm, 
                             LoginForm, 
                             UpdateAccountForm, 
-                            CreateExamForm, 
-                            JoinExamForm, 
+                            ExamCreationForm, 
+                            StudentExamForm, 
                             SubmitExamForm, 
                             RequestResetForm, 
                             ResetPasswordForm)
@@ -130,7 +130,7 @@ def update_face(user_id):
 @login_required
 def create_exam():
     if current_user.user_access:
-        form = CreateExamForm()
+        form = ExamCreationForm()
         if form.validate_on_submit():
             file = request.files['questions']
             filename = secure_filename(file.filename)
@@ -178,7 +178,7 @@ def previous_exam():
 def join_exam(exam_id):
     if not current_user.user_access:
         exam = Exam.query.filter_by(id=exam_id).first()
-        form = JoinExamForm()
+        form = StudentExamForm()
         if form.validate_on_submit():
             try:
                 os.mkdir(os.path.join(app.root_path, 'static', 'logs', str(exam.id)))

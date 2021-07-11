@@ -49,7 +49,7 @@ class UpdateAccountForm(FlaskForm):
 				raise ValidationError('That email is taken. Please choose a different one.')
 
 
-class CreateExamForm(FlaskForm):
+class ExamCreationForm(FlaskForm):
 	topic = StringField('Topic', validators=[DataRequired()])
 	start = DateTimeField('Start date and time', validators=[DataRequired()], default=datetime.now()+timedelta(hours=2))
 	marks = IntegerField('Total marks', validators=[NumberRange(min=10, max=100), DataRequired()])
@@ -58,7 +58,7 @@ class CreateExamForm(FlaskForm):
 	submit = SubmitField('Create')
 
 
-class JoinExamForm(FlaskForm):
+class StudentExamForm(FlaskForm):
 	exam_code = StringField('Exam Code', [Length(min=3, max=6)])
 	submit = SubmitField('Join')
 

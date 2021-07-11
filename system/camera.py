@@ -1,4 +1,4 @@
-import cv2, os
+import cv2, os, winsound
 from system import app
 import numpy as np
 
@@ -49,6 +49,38 @@ def detect_eyes(img, cascade):
     return left_eye, right_eye
 
 
+def store_activity(frame, category, name, exam, box, count=0, warnings=5):
+    if category in ['CELL PHONE', 'LAPTOP']:
+        count += 1
+        winsound.Beep(2500, 100)
+        cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,0,255),2)
+        if count%warnings == 0:
+            path = os.path.join(BASE, 'logs', str(exam.id), str(name), f'{count//warnings}.png')
+            cv2.imwrite(path, frame)
+            print('Saved frame to file system')
+
+
+def detect_objects(frame):
+    configPath = os.path.join(BASE, 'models', 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt')
+    weightsPath = os.path.join(BASE, 'models', 'frozen_inference_graph.pb')
+    net = cv2.dnn_DetectionModel(weightsPath, configPath)
+    classNames= []
+    classIds, confs, bbox = net.detect(frame, confThreshold=0.5)
+    bbox = list(bbox)
+    confs = list(np.array(confs).reshape(1,-1)[0])
+    confs = list(map(float,confs))
+
+    indices = cv2.dnn.NMSBoxes(bbox, confs, 0.5, 0.2)
+    for i in indices:
+        i = i[0]
+        box = bbox[i]
+        x,y,w,h = box[0],box[1],box[2],box[3]
+        cv2.rectangle(frame, (x,y), (x+w,h+y), color=(0, 255, 0), thickness=2)
+        category = classNames[classIds[i][0]-1].upper()
+        cv2.putText(frame, category, (box[0]+10,box[1]+30), cv2.FONT_HERSHEY_COMPLEX,1,(0,255,0),2)
+        store_activity(frame, category, box)
+
+
 def cut_eyebrows(img):
     height, width = img.shape[:2]
     eyebrow_h = int(height / 4)
@@ -68,7 +100,7 @@ def blob_process(img, threshold, detector):
     return keypoints
 
 
-class VideoCamera(object):
+class Detector(object):
     def __init__(self):
         self.video = cv2.VideoCapture(0)
     
@@ -92,6 +124,8 @@ class VideoCamera(object):
 
             ret, jpeg = cv2.imencode('.jpg', frame)
             return (jpeg.tobytes(), persons)
+        
+        detect_objects(frame)
 
-        else:
-            return None, 0
+
+
