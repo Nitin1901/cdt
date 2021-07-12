@@ -40,7 +40,12 @@
 <script>
 
     setTimeout(function(){
+        alert("Half time");
+    }, '{{ timeleft }}');
+
+    setTimeout(function(){
         window.location.href = '{{ url_for("join_exam", exam_id=exam_id) }}';
+        alert("Time Up!");
     }, '{{ time }}');
 
 </script>

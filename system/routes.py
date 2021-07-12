@@ -235,7 +235,7 @@ def attempt_exam(exam_id):
                 flash(f'Exam was submitted late!', 'danger')
                 return redirect(url_for('home'))
     else:
-        return render_template('exam.html', title=f'{exam.topic} Exam', test=test, form=form, time=exam.duration*60000, exam_id=exam_id)
+        return render_template('exam.html', title=f'{exam.topic} Exam', test=test, form=form, time=exam.duration*60000, timeleft=exam.duration*30000, exam_id=exam_id)
 
 
 @app.route("/result")
